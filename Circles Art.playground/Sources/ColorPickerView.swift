@@ -1,8 +1,9 @@
 import UIKit
 
-public class colorPickerView: UIScrollView {
+public class ColorPickerView: UIScrollView {
     
     public var colors = [UIColor]()
+    
     private var optionSize = CGSize()
     public var optionButtons = [UIButton]()
     public var currentColor = UIColor.red
@@ -12,12 +13,13 @@ public class colorPickerView: UIScrollView {
         super.init(coder: aDecoder)
     }
     
-    public init(frame: CGRect, colors: [UIColor]) {
+    public init(frame: CGRect, withColors colors: [UIColor]) {
         super.init(frame: frame)
         
         self.isScrollEnabled = true
         
         let optionSize = CGSize(width: self.frame.height/2, height: self.frame.height/2)
+        
         self.colors = colors
         
         let spacingFactor = max(50, self.frame.width/CGFloat(colors.count))
@@ -43,6 +45,18 @@ public class colorPickerView: UIScrollView {
         
         setCurrentColor(optionButton: optionButtons.first!)
         
+    }
+    
+    convenience override public init(frame: CGRect) {
+        let colors = [
+            rgb(255,182,30),  rgb(108,122,137),
+            rgb(217,182,17),  rgb(77,175,124),
+            rgb(249,105,14),  rgb(38,67,72),
+            rgb(13, 65, 94),  rgb(198,116, 91),
+            rgb(0, 118,127),  rgb(0, 84, 127),
+            ];
+        
+        self.init(frame: frame, withColors: colors)
     }
     
     public func setCurrentColor(optionButton: UIButton) {

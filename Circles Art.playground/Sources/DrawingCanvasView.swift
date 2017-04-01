@@ -6,13 +6,15 @@ public class DrawingCanvasView: UIScrollView {
     // MARK: Properties
     public var activeDrawing : Drawing?
     var drawings = [Drawing]()
-    var colorPickerView: colorPickerView?
+    var colorPickerView: ColorPickerView?
     var currentColor: UIColor? {
         return colorPickerView!.currentColor
     }
+    var deleteArea = UIImageView(frame: CGRect(x: 0, y: 0, width: 50, height: 50))
     
     var gridSpacing : CGFloat = 3
     
+    public var shapes = [Shape]()
     public var shapeMargin : CGFloat = 0
     public var shapeRadius : CGFloat = 5
     public var currentShape: Shape?
@@ -20,13 +22,23 @@ public class DrawingCanvasView: UIScrollView {
     private var diffX : CGFloat = 0
     private var diffY : CGFloat = 0
 
+    public var history = [Drawing]()
     
-    public init(frame: CGRect, shapes: [Shape], colorPicker: colorPickerView) {
+    public var onNewDrawingCreated = {}
+    public var didPopulateAShape = {}
+    public var shapeEditingDidBegin = {}
+    public var shapeEditingDidEnd = {}
+    
+    public init(frame: CGRect, shapes: [Shape], colorPicker: ColorPickerView) {
         super.init(frame: frame)
         
+        setupSceneElements()
         sceneGestures()
         
+        self.shapes = shapes
+        self.currentShape = shapes[0]
         self.colorPickerView = colorPicker
+        
         self.clipsToBounds = true
         self.isScrollEnabled = true
         self.bounces = true
@@ -39,6 +51,18 @@ public class DrawingCanvasView: UIScrollView {
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
     }
+    
+    private func setupSceneElements() {
+        layoutIfNeeded()
+        
+        self.deleteArea.frame.origin.y = -self.deleteArea.frame.height
+        self.deleteArea.frame.origin.x = 5
+        self.deleteArea.layer.cornerRadius = self.deleteArea.frame.width / 2
+        self.deleteArea.image = UIImage(named: "trash")
+        self.deleteArea.contentMode = .scaleAspectFit
+        self.addSubview(deleteArea)
+    }
+
     
     private func sceneGestures() {
         
@@ -64,8 +88,9 @@ public class DrawingCanvasView: UIScrollView {
         swipeLeft.direction = .left;
         self.addGestureRecognizer(swipeLeft);
         
-        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(self.longPressed))
-        self.addGestureRecognizer(longPress);
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(self.doubleTapped(sender:)))
+        doubleTap.numberOfTapsRequired = 2
+        self.addGestureRecognizer(doubleTap)
         
     }
     
@@ -76,30 +101,36 @@ public class DrawingCanvasView: UIScrollView {
             
         case UISwipeGestureRecognizerDirection.right:
             let _ = activeDrawing?.populate( towards: .right, withColor: currentColor!)
-            self.updateContentSize()
             
         case UISwipeGestureRecognizerDirection.left:
             let _ = activeDrawing?.populate( towards: .left, withColor: currentColor!)
-            self.updateContentSize()
             
         case UISwipeGestureRecognizerDirection.up:
             let _ = activeDrawing?.populate( towards: .top, withColor: currentColor!)
-            self.updateContentSize()
             
         case UISwipeGestureRecognizerDirection.down:
             let _ = activeDrawing?.populate( towards: .bottom, withColor: currentColor!)
-            self.updateContentSize()
-            
+
         default:
             break;
         }
+        if self.activeDrawing != nil {
+            history.append(self.activeDrawing!)
+            
+            // This is to be overridden with custom functionalities
+            didPopulateAShape()
+        }
+        
+        
+        
     }
     
     
     func createNewDrawing(at position: CGPoint) {
-        let newDrawing = Drawing(withInitialColor: self.currentColor!, andShapeRadius: self.shapeRadius, andShapeMargin: self.shapeMargin)
+        let newDrawing = Drawing(withShape: currentShape!, withInitialColor: self.currentColor!, andShapeRadius: self.shapeRadius, andShapeMargin: self.shapeMargin)
         
         activeDrawing = newDrawing
+        history.append(self.activeDrawing!)
         
         newDrawing.center = position
         newDrawing.transform = CGAffineTransform(scaleX: 0, y: 0)
@@ -113,53 +144,102 @@ public class DrawingCanvasView: UIScrollView {
         
             newDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
             
-        }, completion: nil)
+        }, completion: {(_: Bool) in
+        
+            self.onNewDrawingCreated()
+        })
+        
+    }
+    
+    func doubleTapped(sender: UITapGestureRecognizer) {
+        let touchPosition = sender.location(in: self)
+        createNewDrawing(at: touchPosition)
+        
     }
     
     func longPressed(sender: UILongPressGestureRecognizer) {
         
+        let touchPosition = sender.location(in: self)
+        
         switch sender.state {
         case .began:
             
-            let touchPosition = sender.location(in: self)
             
-            if (sender.view as? DrawingCanvasView) != nil {
-                createNewDrawing(at: touchPosition)
-            } else if (sender.view as? Drawing) != nil {
+            
+           if (sender.view as? Drawing) != nil {
+                
+                UIView.animate(withDuration: 0.2, animations: {
+                    self.deleteArea.frame.origin.y += self.deleteArea.frame.height + 10
+                })
+                
                 setActiveDrawing(drawing: sender.view as! Drawing)
-            }
+                shapeEditingDidBegin()
             
-            diffX = sender.location(in: self).x - self.activeDrawing!.center.x
-            diffY = sender.location(in: self).y - self.activeDrawing!.center.y
-            gridSpacing = activeDrawing!.shapeRadius * 2 + activeDrawing!.margin!
+            
+                diffX = sender.location(in: self).x - self.activeDrawing!.center.x
+                diffY = sender.location(in: self).y - self.activeDrawing!.center.y
+                gridSpacing = activeDrawing!.shapeRadius * 2 + activeDrawing!.shapeMargin!
 
-            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
-                
-                self.activeDrawing!.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
-                self.activeDrawing!.center.x = round((sender.location(in: self).x - self.diffX - 5) / self.gridSpacing) * self.gridSpacing
-                self.activeDrawing!.center.y = round((sender.location(in: self).y - self.diffY - 5) / self.gridSpacing) * self.gridSpacing
-                
-            }, completion: { (_: Bool) in
-            
-                UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut, animations: {
+                UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
                     
-                    self.activeDrawing!.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                    self.activeDrawing!.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                    self.activeDrawing!.center.x = round((sender.location(in: self).x - self.diffX - 5) / self.gridSpacing) * self.gridSpacing
+                    self.activeDrawing!.center.y = round((sender.location(in: self).y - self.diffY - 5) / self.gridSpacing) * self.gridSpacing
                     
-                }, completion: nil)
-            })
+                }, completion: { (_: Bool) in
+                
+                    UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut, animations: {
+                        
+                        self.activeDrawing!.transform = CGAffineTransform(scaleX: 1, y: 1)
+                        
+                    }, completion: nil)
+                })
+            }
     
         case .changed:
             
             activeDrawing!.center.x = sender.location(in: self).x - self.diffX - 5
             activeDrawing!.center.y = sender.location(in: self).y - self.diffY - 5
-
+            
+            if pointIsWithin(point: touchPosition, rect: self.deleteArea.frame) {
+                UIView.animate(withDuration: 0.2, animations: {
+                    self.deleteArea.backgroundColor = rgba(255, 0, 0, 0.5)
+                    self.deleteArea.tintColor = UIColor.white
+                })
+            } else {
+                UIView.animate(withDuration: 0.2, animations: {
+                    self.deleteArea.backgroundColor = UIColor.clear
+                    self.deleteArea.tintColor = UIColor.clear
+                })
+            }
+            
         case .ended:
             UIView.animate(withDuration: 0.7, delay: 0, usingSpringWithDamping: 0.3, initialSpringVelocity: 0.9, options: .curveEaseIn, animations: {
                 
                 self.activeDrawing!.transform = CGAffineTransform(scaleX: 1, y: 1)
                 
             }, completion: nil)
-            self.updateContentSize()
+            
+            
+            if (sender.view as? Drawing) != nil {
+                shapeEditingDidEnd()
+                
+                if pointIsWithin(point: touchPosition, rect: self.deleteArea.frame) {
+                    UIView.animate(withDuration: 0.5, animations: {
+                        self.activeDrawing?.center = self.deleteArea.center
+                    })
+                    
+                    self.activeDrawing?.delete()
+                }
+                
+                UIView.animate(withDuration: 0.2, delay: 0.5, animations: {
+                    self.deleteArea.frame.origin.y -= self.deleteArea.frame.height + 10
+                })
+                
+                
+            }
+
+            
             
         default:
             break
@@ -188,72 +268,63 @@ public class DrawingCanvasView: UIScrollView {
         
     }
     
-    internal func updateContentSize() {
+    func pointIsWithin(point: CGPoint, rect: CGRect) -> Bool {
+        
+        let rectXExtention = rect.origin.x + rect.width
+        let rectYExtention = rect.origin.y + rect.height
+        
+        if (point.x < rectXExtention
+            && point.x > rect.origin.x)
+            
+            || (point.y < rectYExtention
+                && point.y > rect.origin.y) {
+        
+            return true
+        }
         
         
-//        let shapes = self.activeDrawing?.subviews;
-//        let scrollViewMargin : CGFloat = 80
-//        
-//        for shape in shapes! {
-//            
-//            let shapeInScrollView = self.activeDrawing!.convert(shape.frame, to: self);
-//            
-//            let shapeYExtention = shapeInScrollView.origin.y + shape.frame.height;
-//            let shapeXExtention = shapeInScrollView.origin.x + shape.frame.width;
-//            
-//
-//            if shapeXExtention > self.contentSize.width {
-//                
-//                self.contentSize.width = shapeXExtention + scrollViewMargin
-//                self.setContentOffset(CGPoint(x: self.contentSize.width - self.bounds.width, y:self.contentOffset.y), animated: true)
-//                
-//            }
-//            
-//            if shapeYExtention > self.contentSize.height {
-//                
-//                self.contentSize.height = shapeYExtention + scrollViewMargin
-//                self.setContentOffset(CGPoint(x: self.contentOffset.x, y: self.contentSize.height - self.bounds.height), animated: true)
-//                
-//            }
-//            
-//            self.flashScrollIndicators()
-//        }
-        
+        return false
+    }
+    
+    public func undo() {
+        if self.history.count > 0 {
+            history.popLast()?.undo()
+        }
     }
     
 }
 
-
 public class Drawing: UIView {
     
     // MARK: Properties
-    var shape : Shape?
-    var currentColor: UIColor?
+    public var currentShape : Shape?
+    public var currentColor: UIColor?
     
     var currentTip: Shape?
     var shapesDrawn = [Shape]()
     var prevShape : Shape?
     
     public var shapeRadius : CGFloat = 5
-    public var margin : CGFloat?
+    public var shapeMargin : CGFloat?
     
     // MARK: Init
-    public init(withInitialColor color: UIColor,andShapeRadius radius: CGFloat, andShapeMargin margin: CGFloat) {
+    public init(withShape shape: Shape, withInitialColor color: UIColor,andShapeRadius radius: CGFloat, andShapeMargin margin: CGFloat) {
         
         // Setting up properties
         let frame = CGRect(x: 0, y: 0, width: 20, height: 20)
+        self.currentShape = shape
         self.currentColor = color
-        self.margin = margin
+        self.shapeMargin = margin
         self.shapeRadius = radius
         
         super.init(frame: frame)
         
         // Setting up the first circle
-        self.shape =  Shape(ofType: .square, size: CGSize(width: shapeRadius * 2, height: shapeRadius * 2), margin: self.margin!, color: self.currentColor!)
-        self.shape!.center = self.center
+        self.currentShape = Shape(usingView: shape.shapeView!, ofSize: CGSize(width: shapeRadius*2, height:shapeRadius*2), andMargin: shapeMargin!, andColor: currentColor!)
+        self.currentShape!.center = self.center
         
         // Initial Circle
-        addShape(shape: self.shape!)
+        addShape(shape: self.currentShape!)
         
     }
     
@@ -264,8 +335,10 @@ public class Drawing: UIView {
     // MARK: Functions
     public func populate( towards direction: Side, withColor color: UIColor) -> Shape {
         
-        let newShape = makeAnotherShape(like: self.currentTip!)
+        let newShape = makeAnotherShape(like: self.currentShape!, withColor: self.currentTip!.shapeView!.backgroundColor!)
         addShape(shape: newShape)
+        
+        
         
         // This will be different depending on the direction of the swipe
         var destinationValue: CGFloat;
@@ -288,6 +361,8 @@ public class Drawing: UIView {
             
         }
         
+//        newShape.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+        
         UIView.animate(withDuration: 0.2, animations: {
             
             if direction == .right || direction == .left {
@@ -296,22 +371,19 @@ public class Drawing: UIView {
             } else { newShape.frame.origin.y = destinationValue }
             
             newShape.shapeView!.backgroundColor = color
+//            newShape.transform = CGAffineTransform(scaleX: 1, y: 1)
             
         })
-        
-        
         
         return newShape
     }
 
-    private func makeAnotherShape(like originalShape: Shape) -> Shape {
+    private func makeAnotherShape(like originalShape: Shape, withColor color: UIColor) -> Shape {
         
         let newShapeSize = CGSize(width: self.shapeRadius * 2, height: self.shapeRadius * 2)
-        let newShape = Shape(usingView: originalShape.shapeView!, ofSize: newShapeSize, andMargin: self.margin!, andColor: originalShape.shapeView!.backgroundColor!)
+        let newShape = Shape(usingView: originalShape.shapeView!, ofSize: newShapeSize, andMargin: self.shapeMargin!, andColor: color)
         
-        newShape.frame.origin = originalShape.frame.origin
-        
-        
+        newShape.center = currentTip!.center
         
         return newShape
     }
@@ -352,30 +424,34 @@ public class Drawing: UIView {
             
         } else {
             /* This is when we're undoing the very last shape */
+            self.delete()
             
-            // Basically it grows bigger, then shrinks and disappears
-            UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseIn, animations: {
-                
-                self.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
-                
-            }, completion: {(done: Bool) in
-    
-                if(done) {
-                    
-                    UIView.animate(withDuration: 0.1, animations: {
-                        
-                        self.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
-                        
-                    }, completion: { (done: Bool) in
-    
-                        self.removeFromSuperview()
-                        
-                    })
-                }
-            })
         }
         
-        (self.superview as! DrawingCanvasView).updateContentSize()
+    }
+    
+    func delete() {
+        
+        // Basically it grows bigger, then shrinks and disappears
+        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseIn, animations: {
+            
+            self.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+            
+        }, completion: {(done: Bool) in
+            
+            if(done) {
+                
+                UIView.animate(withDuration: 0.1, animations: {
+                    
+                    self.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+                    
+                }, completion: { (done: Bool) in
+                    
+                    self.removeFromSuperview()
+                    
+                })
+            }
+        })
     }
     
     public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -384,8 +460,8 @@ public class Drawing: UIView {
         // http://stackoverflow.com/questions/11770743/capturing-touches-on-a-subview-outside-the-frame-of-its-superview-using-hittest
 
         for subview in self.subviews {
-            let subPoint = subview.convert(point, from: self)
-            let result = subview.hitTest(subPoint, with:event);
+            let subPoint = (subview as? Shape)?.shapeView?.convert(point, from: self)
+            let result = (subview as? Shape)?.shapeView?.hitTest(subPoint!, with:event);
             
             if (result != nil) {
                 return result;
@@ -399,10 +475,10 @@ public class Drawing: UIView {
 
 public class Shape: UIView {
     
-    var margin : CGFloat?
-    var shapeView : UIView?
-    var size: CGSize?
-    var color: UIColor?
+    public var margin : CGFloat?
+    public var shapeView : UIView?
+    public var size: CGSize?
+    public var color: UIColor?
     
     public enum shapeTypes {
         case circle, square
@@ -418,8 +494,9 @@ public class Shape: UIView {
         
         super.init(frame: CGRect(x: 0, y: 0, width: self.size!.width + margin*2, height: self.size!.height + margin*2))
         
+        let cornerAspect = view.frame.width / view.layer.cornerRadius
         // Just in case the shape has rounded corners
-        self.shapeView!.layer.cornerRadius = view.layer.cornerRadius
+        self.shapeView!.layer.cornerRadius = self.shapeView!.frame.width / cornerAspect
         
         createShape()
         
@@ -448,6 +525,7 @@ public class Shape: UIView {
             self.init(usingView: view, ofSize: size, andMargin: margin, andColor: color)
         }
     }
+
     
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
