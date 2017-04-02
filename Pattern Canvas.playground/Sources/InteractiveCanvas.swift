@@ -3,6 +3,11 @@
 import UIKit
 import AVFoundation
 
+/**
+ It creates an interactive drawing canvas. The canvas is a great place to create interesing patterns. It 
+ can consist of many different sub-drawings. Simply double tap to make a new drawing. A drawing is made 
+ up of shapes swipe the drawing to populate the shape.
+ */
 public class InteractiveCanvas: UIViewController {
     
     // MARK: UI Elements
@@ -25,7 +30,7 @@ public class InteractiveCanvas: UIViewController {
     var deleteDrawingSound : AVAudioPlayer?
     
     // MARK: Properties
-    public var colors = [UIColor]();
+    public var colorPallet = [UIColor]();
     public var shapeSpacing: CGFloat = 10
     public var backgroundColor = UIColor.white
     public var shapeSize : CGFloat = 20
@@ -69,8 +74,8 @@ public class InteractiveCanvas: UIViewController {
         
         undoButton = UIButton(frame: CGRect(origin: CGPoint(x:0,y:0), size: CGSize(width: toolBar!.frame.height, height: toolBar!.frame.height)))
         
-        if self.colors.count > 0 {
-            colorPicker = ColorPickerView(frame : CGRect(x: undoButton!.frame.width + undoButton!.frame.origin.x, y: 0, width: view.frame.width - undoButton!.frame.width, height: 70), withColors: self.colors)
+        if self.colorPallet.count > 0 {
+            colorPicker = ColorPickerView(frame : CGRect(x: undoButton!.frame.width + undoButton!.frame.origin.x, y: 0, width: view.frame.width - undoButton!.frame.width, height: 70), withColors: self.colorPallet)
         } else {
             colorPicker = ColorPickerView(frame : CGRect(x: undoButton!.frame.width + undoButton!.frame.origin.x, y: 0, width: view.frame.width - undoButton!.frame.width, height: 70))
         }

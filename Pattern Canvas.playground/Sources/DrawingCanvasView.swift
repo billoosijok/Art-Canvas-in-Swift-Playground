@@ -5,6 +5,7 @@ public class DrawingCanvasView: UIView {
     
     // MARK: Properties
     public var activeDrawing : Drawing?
+    private var lastActiveDrawing : Drawing?
     var drawings = [Drawing]()
     var colorPickerView: ColorPickerView?
     var currentColor: UIColor? {
@@ -136,6 +137,9 @@ public class DrawingCanvasView: UIView {
      Sets the given drawing to be the active drawing
      */
     func setActiveDrawing(drawing: Drawing) {
+        if self.activeDrawing != nil {
+            self.lastActiveDrawing = activeDrawing
+        }
         self.activeDrawing = drawing
     }
     
@@ -144,18 +148,21 @@ public class DrawingCanvasView: UIView {
      */
     public func undo() {
         if self.history.count > 0 {
-            let lastActiveDrawing = history.popLast()!
+            let prevDrawing = history.popLast()!
             
             // The last drawing is deleted, then undo() should put it back where it was
-            if lastActiveDrawing.isDeleted {
-                lastActiveDrawing.center = lastActiveDrawing.positionBeforeDeletion
+            if prevDrawing.isDeleted {
+                // Readding it to the view
+                self.addSubview(prevDrawing)
+                prevDrawing.center = prevDrawing.positionBeforeDeletion
                 UIView.animate(withDuration: 0.3, animations: {
-                    lastActiveDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
+                    prevDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
                 }, completion: {(_: Bool) in
-                    lastActiveDrawing.isDeleted = false
+                    prevDrawing.isDeleted = false
+                    
                 })
             } else {
-                lastActiveDrawing.undo()
+                prevDrawing.undo()
             }
         }
     }
@@ -217,7 +224,7 @@ public class DrawingCanvasView: UIView {
         switch sender.state {
         case .began:
             
-           if (sender.view as? Drawing) != nil {
+           if (sender.view as? Drawing) != nil && !(sender.view as? Drawing)!.isDeleted {
             
                 setActiveDrawing(drawing: sender.view as! Drawing)
                 shapeEditingDidBegin()
@@ -280,6 +287,8 @@ public class DrawingCanvasView: UIView {
                     // Adding the drawing to history to redraw it on 'undo'
                     self.addDrawingToHistory(drawing: self.activeDrawing!)
                     self.activeDrawing?.delete()
+                    self.setActiveDrawing(drawing: self.lastActiveDrawing!)
+                    
                     self.drawingDidDelete()
                     
                 } else {
@@ -491,8 +500,8 @@ public class Drawing: UIView {
                 }, completion: { (done: Bool) in
                     
                     self.transform = CGAffineTransform(scaleX: 0, y: 0)
-                    
                     self.isDeleted = true
+                    self.removeFromSuperview()
                     
                 })
             }
