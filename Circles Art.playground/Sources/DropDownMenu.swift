@@ -2,45 +2,22 @@
 
 import UIKit
 
-public struct MenuItem {
-    public var view: UIView
-    public var size: CGSize
-    public var value: AnyObject
-    
-    public init(withView view: UIView, value: AnyObject, ofSpecificSize size: CGSize) {
-        // To reset position
-        view.frame.origin = CGPoint(x: 0, y: 0)
-        
-        self.view = view
-        self.value = value
-        self.size = size
-    }
-    
-    public init(withView view: UIView, value: AnyObject) {
-        self.init(withView: view, value: value, ofSpecificSize: view.frame.size)
-    }
-    
-    public init(withText text: String, value: AnyObject, andFrameSize size: CGSize) {
-        
-        let label = UILabel(frame: CGRect(origin: CGPoint(x:0,y:0), size: size))
-        label.text = text
-        label.textAlignment = .center
-        
-        let view = UIView(frame: CGRect(origin: CGPoint(x:0,y:0), size: size))
-        view.addSubview(label)
-        
-        self.init(withView: view, value: value, ofSpecificSize: size)
-    }
-}
 
+/**
+ Creates a drop down menu using an array of `struct MenuItem` as its items. 
+ Note that the width and height of the menu is baed on the size of the largest menu item.
+ */
 public class DropDownMenu: UIView {
+    
+    // MARK: Properties
+    public var menuItems = [MenuItem]()
+    public var selectedItem : MenuItem?
     
     public var toggleButton: UIButton?
     public var isMenuOn: Bool = false
-    public var menuItems = [MenuItem]()
-    public var selectedItem : MenuItem?
-    var smallSize = CGSize()
-    var fullSize = CGSize()
+    
+    public var smallSize = CGSize() // The menu's size when shrunk
+    public var fullSize = CGSize() // The menu's size when opened
     
     public var onChange = {}
     
@@ -65,6 +42,10 @@ public class DropDownMenu: UIView {
         self.clipsToBounds = true
         
         setupItems()
+    }
+    
+    required public init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
     }
     
     private func setupItems() {
@@ -108,7 +89,7 @@ public class DropDownMenu: UIView {
         toggleButton!.setImage(UIImage(named: "arrowDown"), for: .normal)
         toggleButton!.setImage(UIImage(named: "arrowDown-on"), for: .highlighted)
         
-        // Aligning the icon
+        // Aligning the arrow icon
         toggleButton!.imageEdgeInsets.right = toggleButton!.frame.width/2 * 0.75 * 0.05
         toggleButton!.imageEdgeInsets.left = toggleButton!.frame.width/2 * 0.75 * 2.06
         toggleButton!.imageEdgeInsets.top = toggleButton!.frame.height/2 * 0.75
@@ -121,9 +102,6 @@ public class DropDownMenu: UIView {
         self.addSubview(toggleButton!)
     }
     
-    required public init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
-    }
     
     func menuToggleTapped(sender: UIButton) {
         if !isMenuOn { toggle(.on) }
@@ -131,7 +109,12 @@ public class DropDownMenu: UIView {
         else { toggle(.off) }
     }
     
-    func toggle(_ state: State) {
+    /*
+     Toggles the menu `on` or `off`
+     
+     - parameter state: `on` or `off`.
+     **/
+    public func toggle(_ state: State) {
         
         if state == .on && !isMenuOn {
             /* Toggle on */
@@ -185,11 +168,25 @@ public class DropDownMenu: UIView {
     }
     
     func menuItemTapped(sender: UIButton) {
-        select(itemNumber: Int(sender.restorationIdentifier!)!)
+        
+        // The assignment is only to avoid the complier warning
+        let _ = select(itemNumber: Int(sender.restorationIdentifier!)!)
     }
     
-    func select(itemNumber number: Int) {
+    /**
+     Selects an item in the menu. If the passed item position is invalid/out of range, it returns `false`
+     
+     - parameter number: The number of the item in the menu. The first being 0.
+    
+     - return: `false` if the number passed is out of range, or `true` if it succeeded
+     */
+    public func select(itemNumber number: Int) -> Bool {
         
+        // Making sure the the number passed is not out of range
+        if number >= self.menuItems.count {
+            return false
+        }
+            
         // Because all items are contained in UIButtons
         let selectedMenuItem = menuItems[number]
         let selectedItemButton = selectedMenuItem.view.superview as! UIButton
@@ -238,7 +235,6 @@ public class DropDownMenu: UIView {
                 })
             }
         }
-        
     
         // Updating the array of menu items to reflect the changes
         menuItems.insert(menuItems.remove(at: selectedItemPosition), at: 0)
@@ -251,15 +247,83 @@ public class DropDownMenu: UIView {
 
         // Finally, we toggle the menu off 🎉
         toggle(.off)
+        
+        // It's a success! So we return true.
+        return true
+        
+    }
+    
+}
+
+/**
+ A Structure that creates a menu item for the dropdown menu. 
+ The properties are: 
+ - view : The View you want to represent the menu item with
+ - size : The size of the item as CGSize
+ - value: The value associated with the menu option (useful when selecting it)
+ */
+public struct MenuItem {
+    public var view: UIView
+    public var size: CGSize
+    public var value: AnyObject
+    
+    /**
+     This creates a menu item using the view that gets passed.
+     
+     - parameter view : The view of the menu item.
+     - parameter value: The value you want to be associated with the item.
+     - parameter size : The size of the menu item.
+     */
+    public init(withView view: UIView, value: AnyObject, ofSpecificSize size: CGSize) {
+        
+        // To reset position of the view
+        view.frame.origin = CGPoint(x: 0, y: 0)
+        
+        // Setting up properties
+        self.view = view
+        self.value = value
+        self.size = size
+    }
+    
+    /**
+     This creates a menu item using the view that gets passed. Also it uses the frame of the passed view for its size.
+     
+     - parameter view : The view of the menu item.
+     - parameter value: The value you want to be associated with the item.
+
+     */
+    public init(withView view: UIView, value: AnyObject) {
+        self.init(withView: view, value: value, ofSpecificSize: view.frame.size)
+    }
+    
+    /**
+     This makes it easy to create a text-based menu item by just passing a string instead of a view.
+     
+     - parameter text : The text of the menu item.
+     - parameter value: The value you want to be associated with the item.
+     - parameter size : The size of the menu item.
+     */
+    public init(withText text: String, value: AnyObject, andFrameSize size: CGSize) {
+        
+        // Creating the label that will hold the text.
+        let label = UILabel(frame: CGRect(origin: CGPoint(x:0,y:0), size: size))
+        label.text = text
+        label.textAlignment = .center
+        label.adjustsFontSizeToFitWidth = true
+        
+        let view = UIView(frame: CGRect(origin: CGPoint(x:0,y:0), size: size))
+        view.addSubview(label)
+        
+        self.init(withView: view, value: value, ofSpecificSize: size)
     }
 }
 
-
+/**
+ This function helps class DropDownMenus calculate its size based
+ on the items passed to it. This needs to be outside the class, because
+ it need to be called even before super.init
+ */
 internal func configMenuSize(menuItems items: [MenuItem]) -> CGSize {
-    /* This function helps the class DropDownMenus calculate its size based
-     on the items passed to it. This needs to be outside the class, because
-     it gets called even before super.init
-     */
     
     // This will simply reflect the size of the largest menu item
     var menuSize = CGSize(width: 0, height: 0)
@@ -277,31 +341,3 @@ internal func configMenuSize(menuItems items: [MenuItem]) -> CGSize {
     
     return menuSize
 }
-
-
-//let optionSize = CGSize(width: 120, height: 50)
-//let options = [ "Go Away", "Nice", "Click", "Go Away", "Nice","Click", "Go Away", "Nice"];
-//
-//let shape = UIView(frame: CGRect(x: 0, y:0, width: optionSize.width/2, height: optionSize.height/2))
-//shape.backgroundColor = UIColor.green
-//let shapeOption = UIView(frame: CGRect(origin: CGPoint(x:0,y:0), size: optionSize))
-//shapeOption.backgroundColor = UIColor.white
-//shape.center = shapeOption.center
-//
-//shapeOption.addSubview(shape)
-//
-//var menuItems = [MenuItem]()
-//
-//for i in options {
-//    menuItems.append(MenuItem(withText: i, value: i, andFrameSize: optionSize))
-//}
-//
-//menuItems.append(MenuItem(withView: shapeOption, value: shape))
-//
-//
-//let dropDown = DropDownMenu(atPosition: CGPoint(x: 0, y: 0), withMenuItems: menuItems)
-//dropDown.backgroundColor = UIColor.white
-//
-//let view = UIView(frame: CGRect(x: 0, y: 0, width: 150, height: 500))
-//view.backgroundColor = UIColor.red
-//view.addSubview(dropDown)

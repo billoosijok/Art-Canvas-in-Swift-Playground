@@ -1,0 +1,15 @@
+Creative Commons Attributions :
+
+- Code Help:
+* Color Extraction: Leo Dabus from stackoverflow.com.
+                    http://stackoverflow.com/questions/28532564/extract-rgb-values-from-uicolor
+
+* hitTest tips: Noam from stackoverflow.com.
+                http://stackoverflow.com/questions/11770743/capturing-touches-on-a-subview-outside-the-frame-of-its-superview-using-hittest
+
+- Sounds:
+* pop.wav : by unfa from freesound.org.
+            https://www.freesound.org/people/unfa/sounds/245645/
+
+* trash.wav/undo.wav : from YouTube audio library (heavily modified).
+                        https://www.youtube.com/audiolibrary/soundeffects

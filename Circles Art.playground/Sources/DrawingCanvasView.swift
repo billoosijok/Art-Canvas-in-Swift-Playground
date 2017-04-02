@@ -1,7 +1,7 @@
 import UIKit
 
 
-public class DrawingCanvasView: UIScrollView {
+public class DrawingCanvasView: UIView {
     
     // MARK: Properties
     public var activeDrawing : Drawing?
@@ -10,9 +10,7 @@ public class DrawingCanvasView: UIScrollView {
     var currentColor: UIColor? {
         return colorPickerView!.currentColor
     }
-    var deleteArea = UIImageView(frame: CGRect(x: 0, y: 0, width: 50, height: 50))
-    
-    var gridSpacing : CGFloat = 3
+    var deleteArea = UIImageView(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
     
     public var shapes = [Shape]()
     public var shapeMargin : CGFloat = 0
@@ -28,6 +26,7 @@ public class DrawingCanvasView: UIScrollView {
     public var didPopulateAShape = {}
     public var shapeEditingDidBegin = {}
     public var shapeEditingDidEnd = {}
+    public var drawingDidDelete = {}
     
     public init(frame: CGRect, shapes: [Shape], colorPicker: ColorPickerView) {
         super.init(frame: frame)
@@ -40,37 +39,36 @@ public class DrawingCanvasView: UIScrollView {
         self.colorPickerView = colorPicker
         
         self.clipsToBounds = true
-        self.isScrollEnabled = true
-        self.bounces = true
-        self.contentSize.width = self.frame.width
-        self.contentSize.height = self.frame.height
     
-
     }
     
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
     }
     
+    // MARK: Functions
+    
+    /**
+     Simply sets up any subviews
+     */
     private func setupSceneElements() {
         layoutIfNeeded()
         
+        // This is the delete area button
         self.deleteArea.frame.origin.y = -self.deleteArea.frame.height
         self.deleteArea.frame.origin.x = 5
         self.deleteArea.layer.cornerRadius = self.deleteArea.frame.width / 2
         self.deleteArea.image = UIImage(named: "trash")
         self.deleteArea.contentMode = .scaleAspectFit
+        self.deleteArea.layer.zPosition = 10
+        self.deleteArea.backgroundColor = UIColor.white
         self.addSubview(deleteArea)
     }
-
     
+    /**
+     Attaches gestures to all the DrawingCanvasView
+     */
     private func sceneGestures() {
-        
-        for gesture in self.gestureRecognizers! {
-            if gesture is UIPanGestureRecognizer {
-                (gesture as! UIPanGestureRecognizer).minimumNumberOfTouches = 2
-            }
-        }
         
         let swipeRight = UISwipeGestureRecognizer(target: self, action: #selector(self.swiped))
         swipeRight.direction = .right;
@@ -93,7 +91,89 @@ public class DrawingCanvasView: UIScrollView {
         self.addGestureRecognizer(doubleTap)
         
     }
+    /**
+     Creates a new Drawing instance at the given position.
+     
+     - parameter position: The point in which the Drawing should be started.
+     */
+    func createNewDrawing(at position: CGPoint) {
+        
+        // Creating the new Drawing
+        let newDrawing = Drawing(withShape: currentShape!, withInitialColor: self.currentColor!, andShapeRadius: self.shapeRadius, andShapeMargin: self.shapeMargin)
+        
+        // Setting the new Drawing to be active
+        activeDrawing = newDrawing
+        
+        // Adding the Drawing to the history array
+        self.addDrawingToHistory(drawing: self.activeDrawing!)
+        
+        // Scaling it to 0 so it can be animated in.
+        newDrawing.center = position
+        newDrawing.positionBeforeDeletion = position
+        newDrawing.transform = CGAffineTransform(scaleX: 0, y: 0)
+        
+        // Adding gestures to the Drawing.
+        // - LongPress : allows the Drawing to be placed somewhere else.
+        // - Tap : makes a drawing active
+        newDrawing.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(self.longPressed)))
+        newDrawing.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.drawingTapped)))
+        
+        self.addSubview(newDrawing)
+        
+        // Animating the Drawing in by scaling it all the way up.
+        UIView.animate(withDuration: 0.7, delay: 0, usingSpringWithDamping: 0.3, initialSpringVelocity: 0.9, options: .curveEaseIn, animations: {
+            
+            newDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
+            
+        })
+        
+        // Finally calling the onNewDrawingCreated event
+        self.onNewDrawingCreated()
+        
+    }
     
+    /**
+     Sets the given drawing to be the active drawing
+     */
+    func setActiveDrawing(drawing: Drawing) {
+        self.activeDrawing = drawing
+    }
+    
+    /**
+     Undoes the last move.
+     */
+    public func undo() {
+        if self.history.count > 0 {
+            let lastActiveDrawing = history.popLast()!
+            
+            // The last drawing is deleted, then undo() should put it back where it was
+            if lastActiveDrawing.isDeleted {
+                lastActiveDrawing.center = lastActiveDrawing.positionBeforeDeletion
+                UIView.animate(withDuration: 0.3, animations: {
+                    lastActiveDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
+                }, completion: {(_: Bool) in
+                    lastActiveDrawing.isDeleted = false
+                })
+            } else {
+                lastActiveDrawing.undo()
+            }
+        }
+    }
+    
+    /**
+     Adds the drawing passed to history.
+     */
+    func addDrawingToHistory(drawing: Drawing) {
+        
+        // If history is more than 200 then we start
+        // ommiting the really old ones.
+        if history.count > 200 {
+            history.removeFirst()
+        }
+        history.append(drawing)
+    }
+
+    // MARK: Gestures Responders
     func swiped(sender: UISwipeGestureRecognizer) {
         let direction = sender.direction;
         
@@ -115,40 +195,13 @@ public class DrawingCanvasView: UIScrollView {
             break;
         }
         if self.activeDrawing != nil {
-            history.append(self.activeDrawing!)
+            // Adding the active drawing to the array so that it can be retrieved to
+            // call its undo()
+            self.addDrawingToHistory(drawing: self.activeDrawing!)
             
             // This is to be overridden with custom functionalities
             didPopulateAShape()
         }
-        
-        
-        
-    }
-    
-    
-    func createNewDrawing(at position: CGPoint) {
-        let newDrawing = Drawing(withShape: currentShape!, withInitialColor: self.currentColor!, andShapeRadius: self.shapeRadius, andShapeMargin: self.shapeMargin)
-        
-        activeDrawing = newDrawing
-        history.append(self.activeDrawing!)
-        
-        newDrawing.center = position
-        newDrawing.transform = CGAffineTransform(scaleX: 0, y: 0)
-        
-        newDrawing.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(self.longPressed)))
-        newDrawing.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.drawingTapped)))
-        
-        self.addSubview(newDrawing)
-        
-        UIView.animate(withDuration: 0.7, delay: 0, usingSpringWithDamping: 0.3, initialSpringVelocity: 0.9, options: .curveEaseIn, animations: {
-        
-            newDrawing.transform = CGAffineTransform(scaleX: 1, y: 1)
-            
-        }, completion: {(_: Bool) in
-        
-            self.onNewDrawingCreated()
-        })
-        
     }
     
     func doubleTapped(sender: UITapGestureRecognizer) {
@@ -164,27 +217,27 @@ public class DrawingCanvasView: UIScrollView {
         switch sender.state {
         case .began:
             
-            
-            
            if (sender.view as? Drawing) != nil {
-                
+            
+                setActiveDrawing(drawing: sender.view as! Drawing)
+                shapeEditingDidBegin()
+
+                // Showing the delete area
                 UIView.animate(withDuration: 0.2, animations: {
                     self.deleteArea.frame.origin.y += self.deleteArea.frame.height + 10
                 })
-                
-                setActiveDrawing(drawing: sender.view as! Drawing)
-                shapeEditingDidBegin()
             
-            
+                // This is the difference between the touch position and the origin of 
+                // the shape, so when the origin gets moved the difference is added in.
                 diffX = sender.location(in: self).x - self.activeDrawing!.center.x
                 diffY = sender.location(in: self).y - self.activeDrawing!.center.y
-                gridSpacing = activeDrawing!.shapeRadius * 2 + activeDrawing!.shapeMargin!
-
-                UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
+            
+                // Popping out the Drawing to visually show that its movable
+                UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
                     
                     self.activeDrawing!.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
-                    self.activeDrawing!.center.x = round((sender.location(in: self).x - self.diffX - 5) / self.gridSpacing) * self.gridSpacing
-                    self.activeDrawing!.center.y = round((sender.location(in: self).y - self.diffY - 5) / self.gridSpacing) * self.gridSpacing
+                    self.activeDrawing!.center.x = sender.location(in: self).x - self.diffX - 5
+                    self.activeDrawing!.center.y = sender.location(in: self).y - self.diffY - 5
                     
                 }, completion: { (_: Bool) in
                 
@@ -192,122 +245,105 @@ public class DrawingCanvasView: UIScrollView {
                         
                         self.activeDrawing!.transform = CGAffineTransform(scaleX: 1, y: 1)
                         
-                    }, completion: nil)
+                    })
                 })
             }
     
         case .changed:
             
+            // Moving the Drawing to the position of the touch and adding the diffX/diffY
             activeDrawing!.center.x = sender.location(in: self).x - self.diffX - 5
             activeDrawing!.center.y = sender.location(in: self).y - self.diffY - 5
             
+            // If the touch was inside the trash area, it's colored in red
+            // or else it goes back to white.
             if pointIsWithin(point: touchPosition, rect: self.deleteArea.frame) {
                 UIView.animate(withDuration: 0.2, animations: {
-                    self.deleteArea.backgroundColor = rgba(255, 0, 0, 0.5)
-                    self.deleteArea.tintColor = UIColor.white
+                    self.deleteArea.backgroundColor = rgb(255, 100, 100)
                 })
             } else {
                 UIView.animate(withDuration: 0.2, animations: {
-                    self.deleteArea.backgroundColor = UIColor.clear
-                    self.deleteArea.tintColor = UIColor.clear
+                    self.deleteArea.backgroundColor = UIColor.white
                 })
             }
             
         case .ended:
-            UIView.animate(withDuration: 0.7, delay: 0, usingSpringWithDamping: 0.3, initialSpringVelocity: 0.9, options: .curveEaseIn, animations: {
-                
-                self.activeDrawing!.transform = CGAffineTransform(scaleX: 1, y: 1)
-                
-            }, completion: nil)
-            
-            
             if (sender.view as? Drawing) != nil {
-                shapeEditingDidEnd()
                 
+                // If the dragging ended inside the trash can icon then we delete the 
+                // drawing.
                 if pointIsWithin(point: touchPosition, rect: self.deleteArea.frame) {
                     UIView.animate(withDuration: 0.5, animations: {
                         self.activeDrawing?.center = self.deleteArea.center
                     })
                     
+                    // Adding the drawing to history to redraw it on 'undo'
+                    self.addDrawingToHistory(drawing: self.activeDrawing!)
                     self.activeDrawing?.delete()
+                    self.drawingDidDelete()
+                    
+                } else {
+                    // Because it wasn't deleted we update this flag for the next time around. 
+                    // if it gets deleted we use this point to recreate the drawing when the 
+                    // user taps 'undo'
+                    self.activeDrawing?.positionBeforeDeletion = self.activeDrawing!.center
                 }
                 
+                // Hiding the trash icon
                 UIView.animate(withDuration: 0.2, delay: 0.5, animations: {
                     self.deleteArea.frame.origin.y -= self.deleteArea.frame.height + 10
                 })
                 
-                
+                // Running the event
+                shapeEditingDidEnd()
             }
-
-            
             
         default:
             break
         }
     }
     
-    func setActiveDrawing(drawing: Drawing) {
-        self.activeDrawing = drawing
-    }
-    
+    /**
+     It basically makes a drawing active when it's tapped
+     */
     func drawingTapped(sender: UITapGestureRecognizer) {
         
-        let tappedDrawing = sender.view! as! Drawing
-        
-        setActiveDrawing(drawing: tappedDrawing)
-        
-        for shape in tappedDrawing.shapesDrawn {
-            UIView.animateKeyframes(withDuration: 0.2, delay: 0, options: .autoreverse, animations: {
-                shape.backgroundColor = rgb(203, 216, 237)
-            }, completion: {(_ : Bool) in
-                
-                shape.backgroundColor = UIColor.clear
-                
-            })
-        }
-        
-    }
-    
-    func pointIsWithin(point: CGPoint, rect: CGRect) -> Bool {
-        
-        let rectXExtention = rect.origin.x + rect.width
-        let rectYExtention = rect.origin.y + rect.height
-        
-        if (point.x < rectXExtention
-            && point.x > rect.origin.x)
+        if let tappedDrawing = sender.view as? Drawing? {
+            setActiveDrawing(drawing: tappedDrawing!)
             
-            || (point.y < rectYExtention
-                && point.y > rect.origin.y) {
-        
-            return true
-        }
-        
-        
-        return false
-    }
-    
-    public func undo() {
-        if self.history.count > 0 {
-            history.popLast()?.undo()
+            // Hilighting all the shapes to show that they are active
+            for shape in tappedDrawing!.shapesDrawn {
+                UIView.animateKeyframes(withDuration: 0.2, delay: 0, options: .autoreverse, animations: {
+                    shape.backgroundColor = rgb(203, 216, 237)
+                }, completion: {(_ : Bool) in
+                    shape.backgroundColor = UIColor.clear
+                })
+            }
         }
     }
-    
 }
 
+/**
+ A drawing is a single part of the DrawingCanvasView that can be composed of multiple Shapes. The DrawingCanvasView class creates a new drawing whenever the user double taps.
+ 
+ */
 public class Drawing: UIView {
     
     // MARK: Properties
-    public var currentShape : Shape?
-    public var currentColor: UIColor?
-    
-    var currentTip: Shape?
-    var shapesDrawn = [Shape]()
-    var prevShape : Shape?
-    
     public var shapeRadius : CGFloat = 5
     public var shapeMargin : CGFloat?
     
-    // MARK: Init
+    var currentTip: Shape? // basically the current shape which was last drawn.
+    var shapesDrawn = [Shape]()
+    
+    public var currentShape : Shape?
+    public var currentColor: UIColor?
+    
+    public var isDeleted = false
+    public var positionBeforeDeletion = CGPoint()
+
+    
+    // MARK: Inits
     public init(withShape shape: Shape, withInitialColor color: UIColor,andShapeRadius radius: CGFloat, andShapeMargin margin: CGFloat) {
         
         // Setting up properties
@@ -319,11 +355,9 @@ public class Drawing: UIView {
         
         super.init(frame: frame)
         
-        // Setting up the first circle
+        // Setting up the first shape
         self.currentShape = Shape(usingView: shape.shapeView!, ofSize: CGSize(width: shapeRadius*2, height:shapeRadius*2), andMargin: shapeMargin!, andColor: currentColor!)
         self.currentShape!.center = self.center
-        
-        // Initial Circle
         addShape(shape: self.currentShape!)
         
     }
@@ -333,45 +367,54 @@ public class Drawing: UIView {
     }
     
     // MARK: Functions
+    
+    /**
+     Creates a duplicate of the Current Shape towards a certain side in the screen (passed as a parameter).
+     
+     - parameter direction: The direction in which the shape should be drawin.
+     - parameter color: The color of the new shape.
+     
+     - returns: The populated `Shape` object.
+     */
     public func populate( towards direction: Side, withColor color: UIColor) -> Shape {
         
         let newShape = makeAnotherShape(like: self.currentShape!, withColor: self.currentTip!.shapeView!.backgroundColor!)
         addShape(shape: newShape)
         
-        
-        
+        // This is the destination of the newly created shape
         // This will be different depending on the direction of the swipe
-        var destinationValue: CGFloat;
+        var destinationCenterValue: CGFloat;
         
         switch direction {
         case .right:
-            destinationValue = newShape.frame.origin.x + (newShape.frame.width)
+            destinationCenterValue = (newShape.frame.origin.x) + (newShape.frame.width) + (newShape.frame.width/2)
             
         case .left:
-            destinationValue = newShape.frame.origin.x - (newShape.frame.width)
+            destinationCenterValue = (newShape.frame.origin.x) - (newShape.frame.width) + (newShape.frame.width/2)
             
         case .bottom:
-            destinationValue = newShape.frame.origin.y + (newShape.frame.height)
+            destinationCenterValue = (newShape.frame.origin.y) + (newShape.frame.height) + (newShape.frame.height/2)
             
         case .top:
-            destinationValue = newShape.frame.origin.y - (newShape.frame.height)
+            destinationCenterValue = (newShape.frame.origin.y) - (newShape.frame.height) + (newShape.frame.height/2)
             
         default:
             fatalError("Direction can only be .top, .right, .bottom, .left")
             
         }
         
-//        newShape.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+        newShape.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
         
         UIView.animate(withDuration: 0.2, animations: {
             
             if direction == .right || direction == .left {
-                newShape.frame.origin.x = destinationValue
-                
-            } else { newShape.frame.origin.y = destinationValue }
+                newShape.center.x = destinationCenterValue
+            } else {
+                newShape.center.y = destinationCenterValue
+            }
             
             newShape.shapeView!.backgroundColor = color
-//            newShape.transform = CGAffineTransform(scaleX: 1, y: 1)
+            newShape.transform = CGAffineTransform(scaleX: 1, y: 1)
             
         })
         
@@ -404,13 +447,13 @@ public class Drawing: UIView {
         if shapesDrawn.count > 1 {
             
             // We use it to animate the current shape towards the previous one
-            let prevShape = shapesDrawn[shapesDrawn.count - 2]
+            let prevTip = shapesDrawn[shapesDrawn.count - 2]
             
             UIView.animate(withDuration: 0.2, animations: {
                 
                 // To give an epic reverse effect 👍
-                self.currentTip!.center = prevShape.center
-                self.currentTip!.shapeView!.backgroundColor = prevShape.shapeView!.backgroundColor
+                self.currentTip!.center = prevTip.center
+                self.currentTip!.shapeView!.backgroundColor = prevTip.shapeView!.backgroundColor
                 
             }, completion: {(_ : Bool) in
                 
@@ -420,17 +463,16 @@ public class Drawing: UIView {
             })
             
             // Now the previous one becomes the current .. 🎉
-            self.currentTip = prevShape
+            self.currentTip = prevTip
             
         } else {
             /* This is when we're undoing the very last shape */
             self.delete()
             
         }
-        
     }
     
-    func delete() {
+    public func delete() {
         
         // Basically it grows bigger, then shrinks and disappears
         UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseIn, animations: {
@@ -443,11 +485,14 @@ public class Drawing: UIView {
                 
                 UIView.animate(withDuration: 0.1, animations: {
                     
+                    // For some reason animation doesn't work when animating to scale of 0
                     self.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
                     
                 }, completion: { (done: Bool) in
                     
-                    self.removeFromSuperview()
+                    self.transform = CGAffineTransform(scaleX: 0, y: 0)
+                    
+                    self.isDeleted = true
                     
                 })
             }
@@ -473,32 +518,49 @@ public class Drawing: UIView {
 }
 
 
+/**
+ The Shape class creates a UIVIew container that contains the shape instance passed as UIView.
+ It includes the following convenient initializers:
+ 
+ - `init(circleWithSize size: CGSize, margin: CGFloat, color: UIColor)`:
+    It helps you to quickly create a circle shape without passing the view paramenter
+ 
+ - `init(ofType type: shapeTypes, size: CGSize, margin: CGFloat, color: UIColor)`:
+    It can help you create a shape by just passing the shape type
+*/
 public class Shape: UIView {
     
+    // MARK: Properties
     public var margin : CGFloat?
     public var shapeView : UIView?
     public var size: CGSize?
     public var color: UIColor?
     
+    /**
+     Available shapes are: `.circle`, `.square`
+    */
     public enum shapeTypes {
         case circle, square
     }
     
+    // MARK: Inits
     public init(usingView view: UIView, ofSize size: CGSize, andMargin margin: CGFloat, andColor color: UIColor) {
         
-        // Regular init
+        // Setting up properties
         self.shapeView = UIView(frame: CGRect(origin: CGPoint(x:0,y:0), size: size))
         self.margin = margin
         self.color = color
         self.size = size
         
+        // We use the shape's dimentions to create a container for the shape as the 'self'
+        // then we add the shape to the container
         super.init(frame: CGRect(x: 0, y: 0, width: self.size!.width + margin*2, height: self.size!.height + margin*2))
         
         let cornerAspect = view.frame.width / view.layer.cornerRadius
         // Just in case the shape has rounded corners
         self.shapeView!.layer.cornerRadius = self.shapeView!.frame.width / cornerAspect
         
-        createShape()
+        self.createShape()
         
     }
     
@@ -511,7 +573,7 @@ public class Shape: UIView {
         
         self.shapeView!.layer.cornerRadius = shapeView!.frame.width/2
         
-        createShape()
+        self.createShape()
     }
     
     public convenience init(ofType type: shapeTypes, size: CGSize, margin: CGFloat, color: UIColor) {
@@ -526,13 +588,16 @@ public class Shape: UIView {
         }
     }
 
-    
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
     }
     
-    func createShape() {
-        /* Sets up the actual shape and adds to its container */
+    // MARK: functions
+    
+    /**
+     Sets up the actual shape and adds to its container.
+     */
+    private func createShape() {
         
         self.shapeView?.center = self.center
         
