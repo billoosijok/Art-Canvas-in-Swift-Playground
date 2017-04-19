@@ -1,3 +1,3 @@
-# Patter Canvas with Swift Playgrounds
+# Pattern Canvas with Swift Playgrounds
 
-An app that let's you easily create shape patterns
+A playground that let's you easily create shape patterns
