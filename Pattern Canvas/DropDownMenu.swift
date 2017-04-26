@@ -4,7 +4,7 @@ import UIKit
 
 
 /**
- Creates a drop down menu using an array of `struct MenuItem` as its items. 
+ Creates a drop down menu using an array of `struct MenuItem` as its items.
  Note that the width and height of the menu is baed on the size of the largest menu item.
  */
 public class DropDownMenu: UIView {
@@ -79,7 +79,7 @@ public class DropDownMenu: UIView {
         }
         
         // Initial Select
-        _ = select(itemNumber: 0)
+        select(itemNumber: 0)
         
         // The Toggle Button of the menu
         toggleButton = UIButton(frame: CGRect(origin: CGPoint(x: 0, y: 0), size: self.smallSize))
@@ -177,7 +177,7 @@ public class DropDownMenu: UIView {
      Selects an item in the menu. If the passed item position is invalid/out of range, it returns `false`
      
      - parameter number: The number of the item in the menu. The first being 0.
-    
+     
      - return: `false` if the number passed is out of range, or `true` if it succeeded
      */
     public func select(itemNumber number: Int) -> Bool {
@@ -186,7 +186,7 @@ public class DropDownMenu: UIView {
         if number >= self.menuItems.count {
             return false
         }
-            
+        
         // Because all items are contained in UIButtons
         let selectedMenuItem = menuItems[number]
         let selectedItemButton = selectedMenuItem.view.superview as! UIButton
@@ -235,7 +235,7 @@ public class DropDownMenu: UIView {
                 })
             }
         }
-    
+        
         // Updating the array of menu items to reflect the changes
         menuItems.insert(menuItems.remove(at: selectedItemPosition), at: 0)
         
@@ -244,7 +244,7 @@ public class DropDownMenu: UIView {
         
         // Overriding this would provide functionalities onChange
         self.onChange()
-
+        
         // Finally, we toggle the menu off 🎉
         toggle(.off)
         
@@ -256,8 +256,8 @@ public class DropDownMenu: UIView {
 }
 
 /**
- A Structure that creates a menu item for the dropdown menu. 
- The properties are: 
+ A Structure that creates a menu item for the dropdown menu.
+ The properties are:
  - view : The View you want to represent the menu item with
  - size : The size of the item as CGSize
  - value: The value associated with the menu option (useful when selecting it)
@@ -290,7 +290,7 @@ public struct MenuItem {
      
      - parameter view : The view of the menu item.
      - parameter value: The value you want to be associated with the item.
-
+     
      */
     public init(withView view: UIView, value: AnyObject) {
         self.init(withView: view, value: value, ofSpecificSize: view.frame.size)
